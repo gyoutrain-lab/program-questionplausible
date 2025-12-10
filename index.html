@@ -1,159 +1,78 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scientific Quiz Generator (Credible Options)</title>
-<style>
-body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
-h1 { text-align: center; }
-.container { max-width: 950px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-textarea, input, select, button { width: 100%; padding: 10px; margin: 5px 0 15px; border-radius: 5px; border: 1px solid #ccc; }
-button { background: #007bff; color: #fff; border: none; cursor: pointer; }
-button:hover { background: #0056b3; }
-table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; word-wrap: break-word; }
-th, td { border: 1px solid #ccc; padding: 5px; text-align: left; vertical-align: top; }
-th { background-color: #f2f2f2; }
-</style>
-</head>
-<body>
-<div class="container">
-<h1>Scientific Quiz Generator (Credible Options & Rationale)</h1>
+import csv
+import random
 
-<label>OpenAI API Key:</label>
-<input type="password" id="apikey" placeholder="Enter your OpenAI API key">
-
-<label>Questions (one per line):</label>
-<textarea id="questions" rows="8" placeholder="Enter your questions here..."></textarea>
-
-<label>Language:</label>
-<select id="language">
-<option value="en">English</option>
-<option value="id">Indonesian</option>
-</select>
-
-<button onclick="generateQuiz()">Generate Quiz</button>
-<button onclick="downloadCSV()">Download CSV</button>
-
-<div id="results"></div>
-</div>
-
-<script>
-let quizTable = [];
-
-function shuffleArray(array) {
-    return array.sort(() => Math.random() - 0.5);
-}
-
-async function generateQuiz() {
-    const apiKey = document.getElementById('apikey').value.trim();
-    if (!apiKey) { alert("Please enter your OpenAI API key."); return; }
-
-    const questions = document.getElementById('questions').value.split('\n').map(q => q.trim()).filter(q => q);
-    if (questions.length === 0) { alert("Please enter at least one question."); return; }
-
-    const language = document.getElementById('language').value;
-    const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = "Generating quiz, please wait...";
-
-    quizTable = [];
-
-    for (let i = 0; i < questions.length; i++) {
-        const question = questions[i];
-        const prompt = `
-You are an expert in clinical reasoning and scientific knowledge. Generate 4 answer options for this question in ${language === 'id' ? 'Indonesian' : 'English'}:
-- One option must be the "Most plausible" (correct answer), scientifically valid.
-- Other 3 options must be proportionally descriptive, plausible, but less ideal; do not make them too short.
-- Only provide detailed rationale for the Most plausible option.
-- Return JSON in this format:
-{
-"options": ["Option1", "Option2", "Option3", "Option4"],
-"correct_index": 0,
-"rationale": "Detailed scientific/clinical rationale for the most plausible option"
-}
-Question: "${question}"
-`;
-
-        try {
-            const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: "gpt-4",
-                    messages: [{ role: "user", content: prompt }],
-                    temperature: 0.7
-                })
-            });
-
-            const data = await response.json();
-            let text = data.choices[0].message.content.trim();
-            let parsed;
-            try { parsed = JSON.parse(text); } catch(e){ parsed = null; }
-
-            if (!parsed || !parsed.options || parsed.options.length !== 4) {
-                console.error("Invalid AI response:", text);
-                continue;
-            }
-
-            // Shuffle options
-            const indices = [0,1,2,3];
-            const shuffledIndices = shuffleArray(indices);
-            const optionsShuffled = shuffledIndices.map(i => parsed.options[i]);
-            const correctLetter = String.fromCharCode(65 + shuffledIndices.indexOf(parsed.correct_index)); // A-D
-
-            quizTable.push({
-                No: i + 1,
-                Questions: question,
-                OptionA: optionsShuffled[0],
-                OptionB: optionsShuffled[1],
-                OptionC: optionsShuffled[2],
-                OptionD: optionsShuffled[3],
-                CorrectAnswer: correctLetter,
-                Rationale: parsed.rationale
-            });
-
-        } catch(err) {
-            console.error(err);
-        }
+# === Example knowledge base / logic ===
+# For offline local generation, you can expand this dictionary with more patterns
+knowledge_base = {
+    "Pasien skizofrenia agresif": {
+        "correct": "Amankan lingkungan, observasi perilaku, komunikasi tenang",
+        "rationale": "Keselamatan pasien & staf utama; intervensi awal adalah mengamankan lingkungan dan menggunakan komunikasi tenang untuk mencegah eskalasi agresi.",
+        "alternatives": [
+            "Tegur pasien dengan suara keras",
+            "Abaikan pasien",
+            "Catat gejala pasien saja"
+        ]
+    },
+    "Anak demam tinggi, kejang": {
+        "correct": "Penanganan kejang dan stabilisasi ABC",
+        "rationale": "Penanganan darurat kejang prioritas; stabilisasi ABC vital untuk keselamatan pasien.",
+        "alternatives": [
+            "Berikan obat demam saja",
+            "Tunggu demam turun",
+            "Catat suhu dan observasi"
+        ]
     }
-
-    // Display table
-    let html = `<table>
-        <tr><th>No</th><th>Questions</th><th>OptionA</th><th>OptionB</th><th>OptionC</th><th>OptionD</th><th>CorrectAnswer</th><th>Rationale</th></tr>`;
-    quizTable.forEach(row => {
-        html += `<tr>
-            <td>${row.No}</td>
-            <td>${row.Questions}</td>
-            <td>${row.OptionA}</td>
-            <td>${row.OptionB}</td>
-            <td>${row.OptionC}</td>
-            <td>${row.OptionD}</td>
-            <td>${row.CorrectAnswer}</td>
-            <td>${row.Rationale}</td>
-        </tr>`;
-    });
-    html += `</table>`;
-
-    resultsDiv.innerHTML = html;
 }
 
-// CSV Download function
-function downloadCSV() {
-    if (quizTable.length === 0) { alert("No quiz data to download."); return; }
+def generate_quiz(questions):
+    quiz = []
+    for idx, q in enumerate(questions, start=1):
+        key = q.strip()
+        if key not in knowledge_base:
+            print(f"[WARNING] Question not found in knowledge base: {q}")
+            continue
 
-    const headers = ["No","Questions","OptionA","OptionB","OptionC","OptionD","CorrectAnswer","Rationale"];
-    const rows = quizTable.map(row => headers.map(h => `"${(row[h] || "").replace(/"/g,'""')}"`).join(","));
-    const csvContent = [headers.join(","), ...rows].join("\n");
+        data = knowledge_base[key]
+        options = [data["correct"]] + data["alternatives"]
+        # Randomize options
+        random.shuffle(options)
+        correct_index = options.index(data["correct"])
+        correct_letter = chr(65 + correct_index)  # A-D
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", "quiz_generated.csv");
-    link.click();
-}
-</script>
-</body>
-</html>
+        quiz.append({
+            "No": idx,
+            "Questions": q,
+            "OptionA": options[0],
+            "OptionB": options[1],
+            "OptionC": options[2],
+            "OptionD": options[3],
+            "CorrectAnswer": correct_letter,
+            "Rationale": data["rationale"]
+        })
+    return quiz
+
+def save_to_csv(quiz, filename="quiz_generated.csv"):
+    headers = ["No","Questions","OptionA","OptionB","OptionC","OptionD","CorrectAnswer","Rationale"]
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        for row in quiz:
+            writer.writerow(row)
+    print(f"[INFO] Quiz saved to {filename}")
+
+if __name__ == "__main__":
+    # === Input questions ===
+    print("Enter your questions (empty line to finish):")
+    questions = []
+    while True:
+        q = input("> ")
+        if q.strip() == "":
+            break
+        questions.append(q.strip())
+
+    quiz = generate_quiz(questions)
+    if quiz:
+        save_to_csv(quiz)
+        print("[INFO] Quiz generation completed!")
+    else:
+        print("[INFO] No quiz generated. Check your questions and knowledge base.")
