@@ -3,150 +3,135 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Student-Specific Quiz Generator</title>
+<title>Scientific Quiz Generator (Multi-language)</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
-  h1 { text-align: center; }
-  .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-  textarea, input, button { width: 100%; padding: 10px; margin: 5px 0 15px; border-radius: 5px; border: 1px solid #ccc; }
-  button { background: #007bff; color: #fff; border: none; cursor: pointer; }
-  button:hover { background: #0056b3; }
+body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+h1 { text-align: center; }
+.container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+textarea, input, select, button { width: 100%; padding: 10px; margin: 5px 0 15px; border-radius: 5px; border: 1px solid #ccc; }
+button { background: #007bff; color: #fff; border: none; cursor: pointer; }
+button:hover { background: #0056b3; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { border: 1px solid #ccc; padding: 5px; text-align: left; }
+th { background-color: #f2f2f2; }
 </style>
 </head>
 <body>
 <div class="container">
-<h1>Student-Specific Quiz Generator</h1>
+<h1>Scientific Quiz Generator (Multi-language)</h1>
 
 <label>OpenAI API Key:</label>
 <input type="password" id="apikey" placeholder="Enter your OpenAI API key">
 
-<label>Questions JSON:</label>
-<textarea id="questionsJSON" placeholder='Example: [{"question":"Q1","options":["A","B"],"evidence":["fact1"]}]' rows="8"></textarea>
+<label>Questions (one per line):</label>
+<textarea id="questions" rows="6" placeholder="Enter your questions here..."></textarea>
 
-<label>Student Names (comma-separated):</label>
-<textarea id="students" placeholder="Alice,Bob,Charlie" rows="2"></textarea>
+<label>Language:</label>
+<select id="language">
+<option value="en">English</option>
+<option value="id">Indonesian</option>
+</select>
 
-<button onclick="generateStudentQuizzes()">Generate Student Quizzes</button>
+<button onclick="generateQuiz()">Generate Quiz</button>
 
 <div id="results"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 function shuffleArray(array) {
     return array.sort(() => Math.random() - 0.5);
 }
 
-async function generateStudentQuizzes() {
+async function generateQuiz() {
     const apiKey = document.getElementById('apikey').value.trim();
-    if(!apiKey){ alert("Enter API key"); return; }
+    if (!apiKey) { alert("Please enter your OpenAI API key."); return; }
 
-    let questions;
-    try {
-        questions = JSON.parse(document.getElementById('questionsJSON').value);
-        if(!Array.isArray(questions)) throw "Invalid format";
-    } catch(e){ alert("Invalid JSON input."); return; }
+    const questions = document.getElementById('questions').value.split('\n').map(q => q.trim()).filter(q => q);
+    if (questions.length === 0) { alert("Please enter at least one question."); return; }
 
-    const studentNames = document.getElementById('students').value.split(',').map(s=>s.trim()).filter(s=>s);
-    if(studentNames.length === 0){ alert("Enter at least one student"); return; }
+    const language = document.getElementById('language').value;
 
     const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = 'Generating student quizzes...';
+    resultsDiv.innerHTML = "Generating quiz, please wait...";
 
-    // AI evaluates questions
-    const batchPrompt = `
-You are an expert evaluator. For each question below, evaluate the options:
-- Assign plausibility (Most plausible, Plausible, Less plausible, Not plausible)
-- Identify the correct option
-- Provide concise rationale
-Return JSON: [{question:"", option:"", plausibility:"", rationale:"", correct:true/false}, ...] without extra text.
+    const tableRows = [];
 
-Questions: ${JSON.stringify(questions)}
+    for (const question of questions) {
+        const prompt = `
+You are an expert in scientific reasoning. Generate 4 answer options for the following question in ${language === 'id' ? 'Indonesian' : 'English'}:
+- Assign one option as "Most plausible" (correct answer). The other 3 options should be scientifically descriptive but do not require detailed rationale.
+- Randomize plausible-sounding text for other options so they have similar length but only the Most Plausible option gets a detailed rationale.
+- Return JSON in this format: 
+{
+"options": ["...", "...", "...", "..."],
+"correct_index": 0,
+"rationale": "..."
+}
+Question: "${question}"
 `;
 
-    try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: "gpt-4",
-                messages: [{ role: "user", content: batchPrompt }],
-                temperature: 0
-            })
-        });
-
-        const data = await response.json();
-        let text = data.choices[0].message.content.trim();
-        let parsed;
-        try { parsed = JSON.parse(text); } catch(e){ parsed = []; alert("Error parsing AI output"); return; }
-
-        // Group by question
-        const grouped = {};
-        parsed.forEach(item=>{
-            if(!grouped[item.question]) grouped[item.question] = [];
-            grouped[item.question].push(item);
-        });
-
-        const { jsPDF } = window.jspdf;
-
-        for(const student of studentNames){
-            const doc = new jsPDF();
-            let y = 10;
-            let qNum = 1;
-            doc.setFontSize(12);
-            doc.text(`Quiz for ${student}`, 10, y); y+=10;
-
-            const answerKey = [];
-
-            for(let q in grouped){
-                doc.setFontSize(12);
-                doc.setTextColor("#000000");
-                doc.text(`${qNum}. ${q}`, 10, y); y+=7;
-
-                // Shuffle options per student
-                let optionsShuffled = shuffleArray(grouped[q]);
-                optionsShuffled.forEach((opt,i)=>{
-                    let letter = String.fromCharCode(65+i);
-                    let color="#000000";
-                    if(opt.plausibility.includes("Most")) color="#006400";
-                    else if(opt.plausibility.includes("Plausible")) color="#9F6000";
-                    else if(opt.plausibility.includes("Less") || opt.plausibility.includes("Not")) color="#8B0000";
-                    doc.setTextColor(color);
-                    doc.text(`   ${letter}. ${opt.option}`, 12, y); y+=7;
-
-                    if(opt.correct) answerKey.push(`${qNum}: ${letter}`);
-                    // Optional rationale
-                    // doc.text(`      [${opt.plausibility}] ${opt.rationale}`, 12, y); y+=5;
-
-                    if(y>280){ doc.addPage(); y=10; }
-                });
-                y+=5;
-                qNum++;
-            }
-
-            // Answer Key page
-            doc.addPage();
-            y=10;
-            doc.setTextColor("#000000");
-            doc.setFontSize(14);
-            doc.text(`Answer Key for ${student}`, 10, y); y+=10;
-            doc.setFontSize(12);
-            answerKey.forEach(a=>{
-                doc.text(a, 10, y); y+=7;
-                if(y>280){ doc.addPage(); y=10; }
+        try {
+            const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-4",
+                    messages: [{ role: "user", content: prompt }],
+                    temperature: 0.7
+                })
             });
 
-            doc.save(`Quiz_${student}.pdf`);
+            const data = await response.json();
+            let text = data.choices[0].message.content.trim();
+            let parsed;
+            try { parsed = JSON.parse(text); } catch(e){ parsed = null; }
+
+            if (!parsed || !parsed.options || parsed.options.length !== 4) {
+                console.error("Invalid AI response:", text);
+                continue;
+            }
+
+            // Randomize option order
+            const indices = [0,1,2,3];
+            const shuffledIndices = shuffleArray(indices);
+            const optionsShuffled = shuffledIndices.map(i => parsed.options[i]);
+            const correctLetter = String.fromCharCode(65 + shuffledIndices.indexOf(parsed.correct_index)); // A-D
+
+            tableRows.push({
+                question: question,
+                OptionA: optionsShuffled[0],
+                OptionB: optionsShuffled[1],
+                OptionC: optionsShuffled[2],
+                OptionD: optionsShuffled[3],
+                CorrectAnswer: correctLetter,
+                Rationale: parsed.rationale
+            });
+
+        } catch(err) {
+            console.error(err);
         }
-
-        resultsDiv.innerHTML = `Generated quizzes for ${studentNames.length} student(s) successfully!`;
-
-    } catch(err){
-        resultsDiv.innerHTML = 'Error: ' + err.message;
     }
+
+    // Display table
+    let html = `<table>
+        <tr><th>Questions</th><th>OptionA</th><th>OptionB</th><th>OptionC</th><th>OptionD</th><th>CorrectAnswer</th><th>Rationale</th></tr>`;
+    tableRows.forEach(row => {
+        html += `<tr>
+            <td>${row.question}</td>
+            <td>${row.OptionA}</td>
+            <td>${row.OptionB}</td>
+            <td>${row.OptionC}</td>
+            <td>${row.OptionD}</td>
+            <td>${row.CorrectAnswer}</td>
+            <td>${row.Rationale}</td>
+        </tr>`;
+    });
+    html += `</table>`;
+
+    resultsDiv.innerHTML = html;
 }
 </script>
 </body>
