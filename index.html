@@ -1,58 +1,88 @@
+from gpt4all import GPT4All
 import csv
 import random
+import json
 
-# === Example knowledge base / logic ===
-# For offline local generation, you can expand this dictionary with more patterns
-knowledge_base = {
-    "Pasien skizofrenia agresif": {
-        "correct": "Amankan lingkungan, observasi perilaku, komunikasi tenang",
-        "rationale": "Keselamatan pasien & staf utama; intervensi awal adalah mengamankan lingkungan dan menggunakan komunikasi tenang untuk mencegah eskalasi agresi.",
-        "alternatives": [
-            "Tegur pasien dengan suara keras",
-            "Abaikan pasien",
-            "Catat gejala pasien saja"
-        ]
-    },
-    "Anak demam tinggi, kejang": {
-        "correct": "Penanganan kejang dan stabilisasi ABC",
-        "rationale": "Penanganan darurat kejang prioritas; stabilisasi ABC vital untuk keselamatan pasien.",
-        "alternatives": [
-            "Berikan obat demam saja",
-            "Tunggu demam turun",
-            "Catat suhu dan observasi"
-        ]
-    }
-}
+# Initialize the local GPT4All model
+model = GPT4All("ggml-gpt4all-j-v1.3-groovy")  # Adjust the model filename
 
-def generate_quiz(questions):
+def generate_options(question, language="id"):
+    """
+    Generate 4 descriptive options with proportional text for any question,
+    assign plausibility tags, correct answer, and detailed rationale.
+    """
+    prompt = f"""
+You are an expert in clinical/scientific reasoning. Generate 4 answer options for this question in {language}:
+- One option must be the "Most plausible" (correct answer), scientifically valid.
+- Other 3 options must be descriptive, plausible but less ideal.
+- Each option should have a plausibility tag: Most plausible, Plausible, Less plausible, Not plausible.
+- Provide detailed rationale only for the most plausible option.
+- Return JSON like:
+{{
+"options": ["Option1","Option2","Option3","Option4"],
+"plausibility": ["Most plausible","Plausible","Less plausible","Not plausible"],
+"correct_index": 0,
+"rationale": "Detailed rationale for most plausible option"
+}}
+Question: "{question}"
+"""
+    response = model.generate(prompt)
+
+    try:
+        data = json.loads(response.strip())
+        return data
+    except:
+        print(f"[WARNING] Could not parse model output for question: {question}")
+        # fallback simple generation
+        options = [
+            f"{question} - Correct action",
+            f"{question} - Plausible action",
+            f"{question} - Less plausible action",
+            f"{question} - Not plausible action"
+        ]
+        plausibility = ["Most plausible", "Plausible", "Less plausible", "Not plausible"]
+        random.shuffle(options)
+        return {
+            "options": options,
+            "plausibility": plausibility,
+            "correct_index": 0,
+            "rationale": f"Rationale for correct option of question: {question}"
+        }
+
+def generate_quiz_from_list(questions, language="id"):
     quiz = []
     for idx, q in enumerate(questions, start=1):
-        key = q.strip()
-        if key not in knowledge_base:
-            print(f"[WARNING] Question not found in knowledge base: {q}")
-            continue
+        data = generate_options(q, language)
+        options = data["options"]
+        plausibility = data["plausibility"]
 
-        data = knowledge_base[key]
-        options = [data["correct"]] + data["alternatives"]
-        # Randomize options
-        random.shuffle(options)
-        correct_index = options.index(data["correct"])
-        correct_letter = chr(65 + correct_index)  # A-D
+        # Shuffle options while keeping track of correct answer
+        indices = [0,1,2,3]
+        random.shuffle(indices)
+        shuffled_options = [options[i] for i in indices]
+        shuffled_plausibility = [plausibility[i] for i in indices]
+        correct_letter = chr(65 + indices.index(data["correct_index"]))
 
         quiz.append({
             "No": idx,
             "Questions": q,
-            "OptionA": options[0],
-            "OptionB": options[1],
-            "OptionC": options[2],
-            "OptionD": options[3],
+            "OptionA": shuffled_options[0],
+            "OptionB": shuffled_options[1],
+            "OptionC": shuffled_options[2],
+            "OptionD": shuffled_options[3],
             "CorrectAnswer": correct_letter,
-            "Rationale": data["rationale"]
+            "Rationale": data["rationale"],
+            "PlausibilityA": shuffled_plausibility[0],
+            "PlausibilityB": shuffled_plausibility[1],
+            "PlausibilityC": shuffled_plausibility[2],
+            "PlausibilityD": shuffled_plausibility[3]
         })
     return quiz
 
 def save_to_csv(quiz, filename="quiz_generated.csv"):
-    headers = ["No","Questions","OptionA","OptionB","OptionC","OptionD","CorrectAnswer","Rationale"]
+    headers = ["No","Questions","OptionA","OptionB","OptionC","OptionD",
+               "CorrectAnswer","Rationale","PlausibilityA","PlausibilityB",
+               "PlausibilityC","PlausibilityD"]
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
@@ -61,18 +91,14 @@ def save_to_csv(quiz, filename="quiz_generated.csv"):
     print(f"[INFO] Quiz saved to {filename}")
 
 if __name__ == "__main__":
-    # === Input questions ===
-    print("Enter your questions (empty line to finish):")
-    questions = []
-    while True:
-        q = input("> ")
-        if q.strip() == "":
-            break
-        questions.append(q.strip())
-
-    quiz = generate_quiz(questions)
-    if quiz:
+    # === Batch input from text file ===
+    filename = input("Enter the filename containing questions (one per line): ").strip()
+    language = input("Enter language ('id' for Indonesian, 'en' for English): ").strip().lower()
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            questions = [line.strip() for line in f if line.strip()]
+        quiz = generate_quiz_from_list(questions, language)
         save_to_csv(quiz)
         print("[INFO] Quiz generation completed!")
-    else:
-        print("[INFO] No quiz generated. Check your questions and knowledge base.")
+    except FileNotFoundError:
+        print(f"[ERROR] File not found: {filename}")
