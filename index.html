@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Option Plausibility Evaluator</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+    h1 { text-align: center; }
+    .container { max-width: 800px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    input, textarea, button { width: 100%; padding: 10px; margin: 5px 0 15px 0; border-radius: 5px; border: 1px solid #ccc; }
+    button { background: #007bff; color: #fff; border: none; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .option-output { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background: #f2f2f2; }
+    .plausibility { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Option Plausibility Evaluator</h1>
+    
+    <label>Question:</label>
+    <textarea id="question" placeholder="Enter your question here"></textarea>
+    
+    <label>Options (one per line):</label>
+    <textarea id="options" placeholder="Enter each option on a new line"></textarea>
+    
+    <label>Evidence / Facts (one per line):</label>
+    <textarea id="evidence" placeholder="Enter supporting evidence"></textarea>
+    
+    <button onclick="evaluateOptions()">Evaluate Options</button>
+    
+    <div id="results"></div>
+  </div>
+
+  <script>
+    function evaluateOptions() {
+      const question = document.getElementById('question').value;
+      const options = document.getElementById('options').value.split('\n').filter(o => o.trim() !== '');
+      const evidence = document.getElementById('evidence').value.split('\n').filter(e => e.trim() !== '');
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '';
+
+      function evaluateRelevance(option) {
+        const opt = option.toLowerCase();
+        if (opt.includes('sop') || opt.includes('follow')) return 1.0;
+        else if (opt.includes('random')) return 0.5;
+        else if (opt.includes('only')) return 0.3;
+        return 0.0;
+      }
+
+      function evaluateConsistency(option) {
+        let score = 0;
+        evidence.forEach(e => {
+          const words = e.split(' ');
+          words.forEach(word => {
+            if (option.toLowerCase().includes(word.toLowerCase())) score += 0.5;
+          });
+        });
+        return Math.min(score, 1.0);
+      }
+
+      function evaluateSpecificity(option) {
+        const opt = option.toLowerCase();
+        if (opt.includes('strictly') || opt.includes('follow')) return 1.0;
+        else if (opt.includes('random')) return 0.2;
+        else if (opt.includes('only')) return 0.1;
+        return 0.3;
+      }
+
+      function generateRationale(option, level) {
+        if (level === "Most plausible") return `Option '${option}' directly addresses the question and aligns fully with evidence.`;
+        if (level === "Plausible") return `Option '${option}' partially addresses the question and somewhat aligns with evidence but lacks full accuracy.`;
+        if (level === "Less plausible") return `Option '${option}' is weakly related; contains some elements of truth but is incomplete or misleading.`;
+        return `Option '${option}' is irrelevant, incorrect, or contradicts known facts, making it implausible.`;
+      }
+
+      options.forEach(option => {
+        const relevance = evaluateRelevance(option);
+        const consistency = evaluateConsistency(option);
+        const specificity = evaluateSpecificity(option);
+        const totalScore = relevance + consistency + specificity;
+
+        let level = '';
+        if (totalScore >= 2.7) level = "Most plausible";
+        else if (totalScore >= 2.0) level = "Plausible";
+        else if (totalScore >= 1.0) level = "Less plausible";
+        else level = "Not plausible";
+
+        const rationale = generateRationale(option, level);
+
+        const div = document.createElement('div');
+        div.className = 'option-output';
+        div.innerHTML = `<p><strong>Option:</strong> ${option}</p>
+                         <p class="plausibility"><strong>Plausibility:</strong> ${level}</p>
+                         <p><strong>Rationale:</strong> ${rationale}</p>`;
+        resultsDiv.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>
