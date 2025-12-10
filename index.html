@@ -3,28 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scientific Quiz Generator (Numbered, Multi-language)</title>
+<title>Scientific Quiz Generator (Credible Options)</title>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
 h1 { text-align: center; }
-.container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.container { max-width: 950px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 textarea, input, select, button { width: 100%; padding: 10px; margin: 5px 0 15px; border-radius: 5px; border: 1px solid #ccc; }
 button { background: #007bff; color: #fff; border: none; cursor: pointer; }
 button:hover { background: #0056b3; }
-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { border: 1px solid #ccc; padding: 5px; text-align: left; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; word-wrap: break-word; }
+th, td { border: 1px solid #ccc; padding: 5px; text-align: left; vertical-align: top; }
 th { background-color: #f2f2f2; }
 </style>
 </head>
 <body>
 <div class="container">
-<h1>Scientific Quiz Generator (Numbered & Multi-language)</h1>
+<h1>Scientific Quiz Generator (Credible Options & Rationale)</h1>
 
 <label>OpenAI API Key:</label>
 <input type="password" id="apikey" placeholder="Enter your OpenAI API key">
 
 <label>Questions (one per line):</label>
-<textarea id="questions" rows="6" placeholder="Enter your questions here..."></textarea>
+<textarea id="questions" rows="8" placeholder="Enter your questions here..."></textarea>
 
 <label>Language:</label>
 <select id="language">
@@ -61,14 +61,15 @@ async function generateQuiz() {
     for (let i = 0; i < questions.length; i++) {
         const question = questions[i];
         const prompt = `
-You are an expert in scientific reasoning. Generate 4 answer options for the following question in ${language === 'id' ? 'Indonesian' : 'English'}:
-- Assign one option as "Most plausible" (correct answer). The other 3 options should be scientifically descriptive but do not require detailed rationale.
-- Only provide detailed rationale for the Most Plausible option.
-- Return JSON in this format: 
+You are an expert in clinical reasoning and scientific knowledge. Generate 4 answer options for this question in ${language === 'id' ? 'Indonesian' : 'English'}:
+- One option must be the "Most plausible" (correct answer), scientifically valid.
+- Other 3 options must be proportionally descriptive, plausible, but less ideal; do not make them too short.
+- Only provide detailed rationale for the Most plausible option.
+- Return JSON in this format:
 {
 "options": ["Option1", "Option2", "Option3", "Option4"],
 "correct_index": 0,
-"rationale": "..."
+"rationale": "Detailed scientific/clinical rationale for the most plausible option"
 }
 Question: "${question}"
 `;
