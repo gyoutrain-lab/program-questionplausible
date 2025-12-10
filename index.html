@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scientific Quiz Generator (Multi-language)</title>
+<title>Scientific Quiz Generator (Numbered, Multi-language)</title>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
 h1 { text-align: center; }
@@ -18,7 +18,7 @@ th { background-color: #f2f2f2; }
 </head>
 <body>
 <div class="container">
-<h1>Scientific Quiz Generator (Multi-language)</h1>
+<h1>Scientific Quiz Generator (Numbered & Multi-language)</h1>
 
 <label>OpenAI API Key:</label>
 <input type="password" id="apikey" placeholder="Enter your OpenAI API key">
@@ -33,11 +33,14 @@ th { background-color: #f2f2f2; }
 </select>
 
 <button onclick="generateQuiz()">Generate Quiz</button>
+<button onclick="downloadCSV()">Download CSV</button>
 
 <div id="results"></div>
 </div>
 
 <script>
+let quizTable = [];
+
 function shuffleArray(array) {
     return array.sort(() => Math.random() - 0.5);
 }
@@ -50,20 +53,20 @@ async function generateQuiz() {
     if (questions.length === 0) { alert("Please enter at least one question."); return; }
 
     const language = document.getElementById('language').value;
-
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = "Generating quiz, please wait...";
 
-    const tableRows = [];
+    quizTable = [];
 
-    for (const question of questions) {
+    for (let i = 0; i < questions.length; i++) {
+        const question = questions[i];
         const prompt = `
 You are an expert in scientific reasoning. Generate 4 answer options for the following question in ${language === 'id' ? 'Indonesian' : 'English'}:
 - Assign one option as "Most plausible" (correct answer). The other 3 options should be scientifically descriptive but do not require detailed rationale.
-- Randomize plausible-sounding text for other options so they have similar length but only the Most Plausible option gets a detailed rationale.
+- Only provide detailed rationale for the Most Plausible option.
 - Return JSON in this format: 
 {
-"options": ["...", "...", "...", "..."],
+"options": ["Option1", "Option2", "Option3", "Option4"],
 "correct_index": 0,
 "rationale": "..."
 }
@@ -94,14 +97,15 @@ Question: "${question}"
                 continue;
             }
 
-            // Randomize option order
+            // Shuffle options
             const indices = [0,1,2,3];
             const shuffledIndices = shuffleArray(indices);
             const optionsShuffled = shuffledIndices.map(i => parsed.options[i]);
             const correctLetter = String.fromCharCode(65 + shuffledIndices.indexOf(parsed.correct_index)); // A-D
 
-            tableRows.push({
-                question: question,
+            quizTable.push({
+                No: i + 1,
+                Questions: question,
                 OptionA: optionsShuffled[0],
                 OptionB: optionsShuffled[1],
                 OptionC: optionsShuffled[2],
@@ -117,10 +121,11 @@ Question: "${question}"
 
     // Display table
     let html = `<table>
-        <tr><th>Questions</th><th>OptionA</th><th>OptionB</th><th>OptionC</th><th>OptionD</th><th>CorrectAnswer</th><th>Rationale</th></tr>`;
-    tableRows.forEach(row => {
+        <tr><th>No</th><th>Questions</th><th>OptionA</th><th>OptionB</th><th>OptionC</th><th>OptionD</th><th>CorrectAnswer</th><th>Rationale</th></tr>`;
+    quizTable.forEach(row => {
         html += `<tr>
-            <td>${row.question}</td>
+            <td>${row.No}</td>
+            <td>${row.Questions}</td>
             <td>${row.OptionA}</td>
             <td>${row.OptionB}</td>
             <td>${row.OptionC}</td>
@@ -132,6 +137,21 @@ Question: "${question}"
     html += `</table>`;
 
     resultsDiv.innerHTML = html;
+}
+
+// CSV Download function
+function downloadCSV() {
+    if (quizTable.length === 0) { alert("No quiz data to download."); return; }
+
+    const headers = ["No","Questions","OptionA","OptionB","OptionC","OptionD","CorrectAnswer","Rationale"];
+    const rows = quizTable.map(row => headers.map(h => `"${(row[h] || "").replace(/"/g,'""')}"`).join(","));
+    const csvContent = [headers.join(","), ...rows].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", "quiz_generated.csv");
+    link.click();
 }
 </script>
 </body>
