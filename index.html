@@ -4,23 +4,43 @@ import random
 import json
 
 # Initialize the local GPT4All model
-model = GPT4All("ggml-gpt4all-j-v1.3-groovy")  # adjust the filename to your local model
+model = GPT4All("ggml-gpt4all-j-v1.3-groovy")  # adjust to your local model
+
+def generate_question_batch(topic, num_questions=50, language="id"):
+    """
+    Generate a batch of questions based on a topic or keyword.
+    Returns a list of questions as strings.
+    """
+    prompt = f"""
+You are an expert quiz creator. Generate {num_questions} questions in {language} 
+about the following topic: "{topic}".
+- Each question should be concise, clear, and relevant.
+- Return the output as a JSON array of questions.
+"""
+    response = model.generate(prompt)
+    try:
+        questions = json.loads(response.strip())
+        if isinstance(questions, list):
+            return questions
+        else:
+            raise ValueError
+    except:
+        print("[WARNING] Could not parse model output. Using fallback simple questions.")
+        return [f"{topic} question {i+1}?" for i in range(num_questions)]
 
 def generate_options(question, language="id"):
     """
-    Generate 4 descriptive options with proportional text for any question,
-    assign plausibility tags, correct answer, and detailed rationale.
+    Generate 4 descriptive options with proportional text, plausibility, correct answer, rationale.
     """
     prompt = f"""
-You are an expert in clinical/scientific reasoning. 
-For the following question in {language}:
+You are an expert in clinical/scientific reasoning. For the following question in {language}:
 
 - Generate 4 answer options.
 - One option must be the "Most plausible" (correct answer).
 - The other 3 should be scientifically plausible but less ideal, with proportional descriptive narration.
 - Assign plausibility tags: Most plausible, Plausible, Less plausible, Not plausible.
 - Provide detailed rationale only for the most plausible option.
-- Return output in valid JSON format like:
+- Return output in valid JSON format:
 {{
 "options": ["Option1","Option2","Option3","Option4"],
 "plausibility": ["Most plausible","Plausible","Less plausible","Not plausible"],
@@ -30,12 +50,10 @@ For the following question in {language}:
 Question: "{question}"
 """
     response = model.generate(prompt)
-    
     try:
         data = json.loads(response.strip())
         return data
     except:
-        print(f"[WARNING] Could not parse output. Using fallback for: {question}")
         # Fallback simple generation
         options = [
             f"{question} - Correct action",
@@ -52,5 +70,55 @@ Question: "{question}"
             "rationale": f"Rationale for correct option: {question}"
         }
 
-# The rest of the script would include generating the quiz for a list of questions,
-# shuffling options, marking the correct answer, and saving to CSV.
+def generate_quiz(questions, language="id"):
+    quiz = []
+    for idx, q in enumerate(questions, start=1):
+        data = generate_options(q, language)
+        options = data["options"]
+        plausibility = data["plausibility"]
+
+        # Shuffle options but track correct answer
+        indices = [0,1,2,3]
+        random.shuffle(indices)
+        shuffled_options = [options[i] for i in indices]
+        shuffled_plausibility = [plausibility[i] for i in indices]
+        correct_letter = chr(65 + indices.index(data["correct_index"]))
+
+        quiz.append({
+            "No": idx,
+            "Questions": q,
+            "OptionA": shuffled_options[0],
+            "OptionB": shuffled_options[1],
+            "OptionC": shuffled_options[2],
+            "OptionD": shuffled_options[3],
+            "CorrectAnswer": correct_letter,
+            "Rationale": data["rationale"],
+            "PlausibilityA": shuffled_plausibility[0],
+            "PlausibilityB": shuffled_plausibility[1],
+            "PlausibilityC": shuffled_plausibility[2],
+            "PlausibilityD": shuffled_plausibility[3]
+        })
+    return quiz
+
+def save_to_csv(quiz, filename="quiz_generated.csv"):
+    headers = ["No","Questions","OptionA","OptionB","OptionC","OptionD",
+               "CorrectAnswer","Rationale","PlausibilityA","PlausibilityB",
+               "PlausibilityC","PlausibilityD"]
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        for row in quiz:
+            writer.writerow(row)
+    print(f"[INFO] Quiz saved to {filename}")
+
+if __name__ == "__main__":
+    topic = input("Enter the topic or keyword for quiz generation: ").strip()
+    num_questions = int(input("Enter number of questions to generate: ").strip())
+    language = input("Enter language ('id' for Indonesian, 'en' for English): ").strip().lower()
+
+    questions = generate_question_batch(topic, num_questions, language)
+    print(f"[INFO] Generated {len(questions)} questions based on topic '{topic}'.")
+
+    quiz = generate_quiz(questions, language)
+    save_to_csv(quiz)
+    print("[INFO] Batch quiz generation completed successfully!")
